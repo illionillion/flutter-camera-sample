@@ -160,6 +160,9 @@ class _DisplayPictureScreenState extends State<DisplayPictureScreen> {
 
   // スクリーンショットを取得して画像を保存するメソッド
   Future<void> _saveImageWithBoxes() async {
+    setState(() {
+      _busy = true; // 画像保存中にフラグをセットして、インジケータを表示
+    });
     // ScreenshotControllerを使用してスクリーンショットを取得
     final image = await screenshotController.capture();
     if (image != null) {
@@ -175,6 +178,9 @@ class _DisplayPictureScreenState extends State<DisplayPictureScreen> {
         const SnackBar(content: Text('画像が保存に失敗しました。')),
       );
     }
+    setState(() {
+      _busy = false; // 画像保存が完了したらフラグを解除して、インジケータを非表示
+    });
   }
 
   @override
@@ -192,6 +198,11 @@ class _DisplayPictureScreenState extends State<DisplayPictureScreen> {
   }
 
   _detectObject(String imagePath) async {
+
+    setState(() {
+      _busy = true; // TFLite処理中にフラグをセットして、インジケータを表示
+    });
+
     var recognitions = await Tflite.detectObjectOnImage(
       path: imagePath,
       model: "SSDMobileNet",
@@ -205,7 +216,7 @@ class _DisplayPictureScreenState extends State<DisplayPictureScreen> {
           _imageWidth = info.image.width.toDouble();
           _imageHeight = info.image.height.toDouble();
           _recognitions = recognitions!;
-          _busy = false;
+          _busy = false; // TFLite処理が完了したらフラグを解除して、インジケータを非表示にする
         });
       }),
     );
@@ -260,7 +271,7 @@ class _DisplayPictureScreenState extends State<DisplayPictureScreen> {
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _saveImageWithBoxes,
+        onPressed: _busy ? null : _saveImageWithBoxes,
         child: const Text('保存'),
       ),
     );

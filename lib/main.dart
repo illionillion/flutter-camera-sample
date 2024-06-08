@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:gallery_saver/gallery_saver.dart';
+import 'package:tflite_v2/tflite_v2.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -136,20 +137,105 @@ class TakePictureScreenState extends State<TakePictureScreen> {
   }
 }
 
-class DisplayPictureScreen extends StatelessWidget {
+class DisplayPictureScreen extends StatefulWidget {
   const DisplayPictureScreen({super.key, required this.imagePath});
 
   final String imagePath;
 
   @override
+  _DisplayPictureScreenState createState() => _DisplayPictureScreenState();
+}
+
+class _DisplayPictureScreenState extends State<DisplayPictureScreen> {
+  List _recognitions = [];
+  double _imageWidth = 0;
+  double _imageHeight = 0;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadModel();
+    _detectObject(widget.imagePath);
+  }
+
+  _loadModel() async {
+    String? res = await Tflite.loadModel(
+      model: "assets/ssd_mobilenet.tflite",
+      labels: "assets/ssd_mobilenet.txt",
+    );
+    print(res);
+  }
+
+  _detectObject(String imagePath) async {
+    var recognitions = await Tflite.detectObjectOnImage(
+      path: imagePath,
+      model: "SSDMobileNet",
+      threshold: 0.5,
+      numResultsPerClass: 1,
+    );
+
+    FileImage(File(imagePath)).resolve(ImageConfiguration()).addListener(
+      ImageStreamListener((ImageInfo info, bool _) {
+        setState(() {
+          _imageWidth = info.image.width.toDouble();
+          _imageHeight = info.image.height.toDouble();
+          _recognitions = recognitions!;
+          _busy = false;
+        });
+      }),
+    );
+  }
+
+  List<Widget> renderBoxes(Size screen) {
+    if (_recognitions == null) return [];
+    if (_imageWidth == 0 || _imageHeight == 0) return [];
+
+    double factorX = screen.width;
+    double factorY = _imageHeight / _imageHeight * screen.width;
+
+    return _recognitions.map((re) {
+      return Positioned(
+        left: re["rect"]["x"] * factorX,
+        top: re["rect"]["y"] * factorY,
+        width: re["rect"]["w"] * factorX,
+        height: re["rect"]["h"] * factorY,
+        child: Container(
+          decoration: BoxDecoration(
+            border: Border.all(
+              color: Colors.red,
+              width: 3,
+            ),
+          ),
+          child: Text(
+            "${re["detectedClass"]} ${(re["confidenceInClass"] * 100).toStringAsFixed(0)}%",
+            style: TextStyle(
+              background: Paint()..color = Colors.red,
+              color: Colors.white,
+              fontSize: 15,
+            ),
+          ),
+        ),
+      );
+    }).toList();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    Size screenSize = MediaQuery.of(context).size;
     return Scaffold(
       appBar: AppBar(title: const Text('撮れた写真')),
-      body: Center(child: Image.file(File(imagePath))),
+      body: Stack(
+        children: [
+          Center(child: Image.file(File(widget.imagePath))),
+          ...renderBoxes(screenSize),
+          if (_busy)
+            Center(child: CircularProgressIndicator()),
+        ],
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
-          await GallerySaver.saveImage(imagePath);
-          // ignore: use_build_context_synchronously
+          await GallerySaver.saveImage(widget.imagePath);
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('画像が保存されました')),
           );
@@ -157,5 +243,11 @@ class DisplayPictureScreen extends StatelessWidget {
         child: const Text('保存'),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    Tflite.close();
+    super.dispose();
   }
 }

@@ -223,7 +223,6 @@ class _DisplayPictureScreenState extends State<DisplayPictureScreen> {
   }
 
   List<Widget> renderBoxes(Size screen) {
-    if (_recognitions == null) return [];
     if (_imageWidth == 0 || _imageHeight == 0) return [];
 
     double factorX = screen.width;

@@ -2,12 +2,16 @@ import 'dart:io';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
-import 'package:gallery_saver/gallery_saver.dart';
+import 'package:flutter/services.dart';
+import 'package:image_gallery_saver/image_gallery_saver.dart';
+import 'package:screenshot/screenshot.dart';
 import 'package:tflite_v2/tflite_v2.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
+  SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp, // 画面を縦向きに固定
+  ]);
   final cameras = await availableCameras();
   final firstCamera = cameras.first;
 
@@ -151,6 +155,27 @@ class _DisplayPictureScreenState extends State<DisplayPictureScreen> {
   double _imageWidth = 0;
   double _imageHeight = 0;
   bool _busy = false;
+  // ScreenshotControllerを初期化
+  final ScreenshotController screenshotController = ScreenshotController();
+
+  // スクリーンショットを取得して画像を保存するメソッド
+  Future<void> _saveImageWithBoxes() async {
+    // ScreenshotControllerを使用してスクリーンショットを取得
+    final image = await screenshotController.capture();
+    if (image != null) {
+      // 画像を保存
+      await ImageGallerySaver.saveImage(Uint8List.fromList(image));
+      // 保存が完了したことをユーザーに通知
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('画像が保存されました')),
+      );
+    } else {
+      // 画像がnullの場合はエラーメッセージを表示するか、適切な処理を行う
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('画像が保存に失敗しました。')),
+      );
+    }
+  }
 
   @override
   void initState() {
@@ -160,11 +185,10 @@ class _DisplayPictureScreenState extends State<DisplayPictureScreen> {
   }
 
   _loadModel() async {
-    String? res = await Tflite.loadModel(
+    await Tflite.loadModel(
       model: "assets/ssd_mobilenet.tflite",
       labels: "assets/ssd_mobilenet.txt",
     );
-    print(res);
   }
 
   _detectObject(String imagePath) async {
@@ -225,21 +249,18 @@ class _DisplayPictureScreenState extends State<DisplayPictureScreen> {
     Size screenSize = MediaQuery.of(context).size;
     return Scaffold(
       appBar: AppBar(title: const Text('撮れた写真')),
-      body: Stack(
-        children: [
-          Center(child: Image.file(File(widget.imagePath))),
-          ...renderBoxes(screenSize),
-          if (_busy)
-            Center(child: CircularProgressIndicator()),
-        ],
+      body: Screenshot(
+        controller: screenshotController,
+        child: Stack(
+          children: [
+            Center(child: Image.file(File(widget.imagePath))),
+            ...renderBoxes(screenSize),
+            if (_busy) const Center(child: CircularProgressIndicator()),
+          ],
+        ),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          await GallerySaver.saveImage(widget.imagePath);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('画像が保存されました')),
-          );
-        },
+        onPressed: _saveImageWithBoxes,
         child: const Text('保存'),
       ),
     );
